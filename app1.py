@@ -1,6 +1,5 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 from docx import Document
 from docx.shared import Pt
 from PIL import Image
@@ -11,29 +10,37 @@ import datetime
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Redactor Científico Prof. Cárdenas", layout="wide")
 
-# --- FUNCIONES DE APOYO ---
+# --- FUNCIONES DE GENERACIÓN ---
 def generar_word_articulo(datos, bibliografia):
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = 'Arial'
-    style.font.size = Pt(12)
+    style.font.size = Pt(11)
     
-    doc.add_heading(datos['titulo'], 0)
+    # Título
+    titulo = doc.add_heading(datos['titulo'], 0)
+    titulo.alignment = 1 # Centrado
+    
+    # Resúmenes
+    doc.add_heading('RESUMEN', level=1)
+    doc.add_paragraph(datos['resumen_es'])
+    
+    doc.add_heading('ABSTRACT', level=1)
+    doc.add_paragraph(datos['resumen_en'])
     
     secciones = [
-        ("RESUMEN", datos['resumen']),
-        ("INTRODUCCIÓN", "La presente investigación se fundamenta en la necesidad de generar conocimiento académico..."),
-        ("METODOLOGÍA", datos['metodologia']),
-        ("RESULTADOS Y DISCUSIÓN", datos['cuerpo']),
-        ("CONCLUSIONES", "Se concluye que los objetivos planteados fueron alcanzados mediante el análisis estadístico...")
+        ("INTRODUCCIÓN", "La presente investigación aborda el fenómeno desde una perspectiva analítica..."),
+        ("METODOLOGÍA", f"Se aplicó un enfoque {datos['metodologia']}."),
+        ("RESULTADOS", datos['cuerpo']),
+        ("CONCLUSIONES", "Los resultados sugieren una correlación significativa entre las variables estudiadas.")
     ]
     
-    for titulo, contenido in secciones:
-        doc.add_heading(titulo, level=1)
-        doc.add_paragraph(contenido)
+    for tit, cont in secciones:
+        doc.add_heading(tit, level=1)
+        doc.add_paragraph(cont)
     
     if bibliografia:
-        doc.add_heading("REFERENCIAS BIBLIOGRÁFICAS (APA)", level=1)
+        doc.add_heading("BIBLIOGRAFÍA (Normas APA)", level=1)
         for cita in sorted(bibliografia):
             doc.add_paragraph(cita, style='List Bullet')
             
@@ -44,90 +51,94 @@ def generar_word_articulo(datos, bibliografia):
 
 def generar_latex_articulo(datos, bibliografia):
     bib_items = "\n".join([f"\\item {c}" for c in sorted(bibliografia)])
-    latex = f"""\\documentclass[12pt]{{article}}
+    latex = f"""\\documentclass[12pt,a4paper]{{article}}
 \\usepackage[utf8]{{inputenc}}
-\\usepackage[spanish]{{babel}}
+\\usepackage[spanish,english]{{babel}}
 \\title{{{datos['titulo']}}}
-\\author{{Prof. Ismael Cárdenas}}
+\\author{{Prof. Ismael Antonio Cárdenas López}}
+
 \\begin{{document}}
 \\maketitle
+
+\\selectlanguage{{spanish}}
 \\begin{{abstract}}
-{datos['resumen']}
+{datos['resumen_es']}
 \\end{{abstract}}
+
+\\selectlanguage{{english}}
+\\renewcommand{{\\abstractname}}{{Abstract}}
+\\begin{{abstract}}
+{datos['resumen_en']}
+\\end{{abstract}}
+
+\\selectlanguage{{spanish}}
 \\section{{Introducción}}
-Texto introductorio generado automáticamente...
+Texto introductorio...
 \\section{{Metodología}}
 {datos['metodologia']}
-\\section{{Resultados y Discusión}}
+\\section{{Resultados}}
 {datos['cuerpo']}
-\\section{{Referencias Bibliográficas}}
+\\section{{Bibliografía}}
 \\begin{{itemize}}
 {bib_items}
 \\end{{itemize}}
 \\end{{document}}"""
     return latex
 
-# --- INTERFAZ ---
-st.title("📝 Redactor de Artículos Científicos con OCR")
-st.markdown("---")
+# --- INTERFAZ DE USUARIO ---
+st.title("📝 Redactor Académico Multilingüe")
+st.info("Este módulo genera artículos científicos con Resumen (ES) y Abstract (EN) automáticos.")
 
-# 1. ESCÁNER DE IMAGEN (OCR)
-st.subheader("📷 Extracción de Información desde Imagen")
-archivo_img = st.file_uploader("Sube una foto del artículo o apuntes", type=['jpg','png','jpeg'])
-texto_extraido = ""
-
-if archivo_img:
-    with st.spinner("Leyendo imagen..."):
-        reader = easyocr.Reader(['es'])
+# 1. OCR PARA IMÁGENES
+with st.expander("📷 Extraer texto de imagen (OCR)"):
+    archivo_img = st.file_uploader("Sube una foto del artículo", type=['jpg','png','jpeg'])
+    texto_extraido = ""
+    if archivo_img:
+        reader = easyocr.Reader(['es', 'en'])
         img = Image.open(archivo_img)
         texto_extraido = "\n".join(reader.readtext(np.array(img), detail=0))
-    st.success("Texto extraído con éxito. Puedes copiarlo o usarlo abajo.")
-    st.text_area("Texto detectado:", value=texto_extraido, height=150)
+        st.text_area("Texto detectado:", value=texto_extraido, height=100)
 
-# 2. FORMULARIO DEL ARTÍCULO
-st.markdown("---")
-with st.form("art_form"):
-    c1, c2 = st.columns(2)
-    titulo = c1.text_input("Título del Artículo", "Estudio sobre Estadística Aplicada")
-    metodo = c2.selectbox("Metodología", ["Cuantitativa", "Cualitativa", "Mixta"])
+# 2. FORMULARIO PRINCIPAL
+with st.form("main_form"):
+    titulo = st.text_input("Título del Artículo", "Análisis Estadístico sobre...")
+    metodo = st.selectbox("Metodología", ["Cuantitativa", "Cualitativa", "Mixta"])
     
-    resumen = st.text_area("Resumen (Abstract)", height=100)
-    cuerpo = st.text_area("Cuerpo del Artículo / Resultados", 
-                          value=texto_extraido, 
-                          help="Aquí puedes pegar el texto extraído de la imagen", 
-                          height=250)
+    col_es, col_en = st.columns(2)
+    res_es = col_es.text_area("Resumen (Español)", height=150, placeholder="Escribe el resumen aquí...")
+    res_en = col_en.text_area("Abstract (Inglés)", height=150, placeholder="Write the abstract here...")
     
-    submit = st.form_submit_button("💾 Guardar Borrador")
+    cuerpo = st.text_area("Contenido / Resultados", value=texto_extraido, height=200)
+    
+    btn_guardar = st.form_submit_button("✅ Procesar Artículo")
 
-# 3. GESTOR APA
-st.markdown("---")
-st.subheader("📚 Bibliografía APA")
-if 'bib_list' not in st.session_state: st.session_state.bib_list = []
+# 3. GESTOR DE BIBLIOGRAFÍA
+st.subheader("📚 Referencias APA")
+if 'bibliografia' not in st.session_state: st.session_state.bibliografia = []
 
 with st.expander("Agregar Referencia"):
-    ac1, ac2 = st.columns(2)
-    autor = ac1.text_input("Autor")
-    anio = ac2.text_input("Año")
-    tit_obra = st.text_input("Título del Libro/Artículo")
-    if st.button("Añadir Cita"):
-        st.session_state.bib_list.append(f"{autor} ({anio}). {tit_obra}.")
+    c1, c2, c3 = st.columns([3,1,2])
+    aut = c1.text_input("Autor")
+    yr = c2.text_input("Año")
+    ti = c3.text_input("Título")
+    if st.button("Añadir"):
+        st.session_state.bibliografia.append(f"{aut} ({yr}). {ti}.")
         st.rerun()
 
-for c in st.session_state.bib_list:
-    st.write(f"• {c}")
-
-# 4. DESCARGAS
-if submit:
-    datos_finales = {
-        "titulo": titulo, "resumen": resumen, 
-        "metodologia": metodo, "cuerpo": cuerpo
+# 4. BOTONES DE DESCARGA
+if btn_guardar:
+    datos = {
+        "titulo": titulo, "metodologia": metodo, 
+        "resumen_es": res_es, "resumen_en": res_en, "cuerpo": cuerpo
     }
     
-    st.markdown("### 📥 Descargar Documentos Finales")
-    col_w, col_l = st.columns(2)
+    st.success("¡Documento estructurado con éxito!")
+    col_d1, col_d2 = st.columns(2)
     
-    file_word = generar_word_articulo(datos_finales, st.session_state.bib_list)
-    col_w.download_button("Descargar Word (.docx)", file_word, f"{titulo}.docx")
+    # Word
+    buf_word = generar_word_articulo(datos, st.session_state.bibliografia)
+    col_d1.download_button("📥 Descargar Word (.docx)", buf_word, f"{titulo}.docx")
     
-    file_latex = generar_latex_articulo(datos_finales, st.session_state.bib_list)
-    col_l.download_button("Descargar LaTeX (.tex)", file_latex.encode(), f"{titulo}.tex")
+    # LaTeX
+    code_latex = generar_latex_articulo(datos, st.session_state.bibliografia)
+    col_d2.download_button("📥 Descargar LaTeX (.tex)", code_latex.encode('utf-8'), f"{titulo}.tex")
